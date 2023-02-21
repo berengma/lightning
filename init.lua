@@ -13,20 +13,15 @@ of the license, or (at your option) any later version.
 lightning = {}
 
 lightning.interval_low = 17
-lightning.interval_high = 503
+lightning.interval_high = 50
 lightning.range_h = 100
 lightning.range_v = 50
 lightning.size = 100
 -- disable this to stop lightning mod from striking
 lightning.auto = true
--- range of the skybox highlight and sound effect
-lightning.effect_range = 500
-
-local random_fire = minetest.settings:get_bool("lightning_random_fire") ~= false
 
 local rng = PcgRandom(32321123312123)
 
--- table with playername as key and previous skybox as value
 local ps = {}
 local ttl = 1
 
@@ -39,12 +34,9 @@ local revertsky = function()
 		return
 	end
 
-	for playername, sky in pairs(ps) do
-		local player = minetest.get_player_by_name(playername)
-		-- check if the player is still online
-		if player then
-			player:set_sky(sky.bgcolor, sky.type, sky.textures)
-		end
+	for key, entry in pairs(ps) do
+		local sky = entry.sky
+		entry.p:set_sky({base_color = sky.bgcolor, type = sky.type, textures = sky.textures})
 	end
 
 	ps = {}
@@ -131,7 +123,7 @@ lightning.strike = function(pos)
 		glow = 14,
 	})
 
-	minetest.sound_play({ pos = pos, name = "lightning_thunder", gain = 10, max_hear_distance = lightning.effect_range })
+	minetest.sound_play({ pos = pos, name = "lightning_thunder", gain = 10, max_hear_distance = 500 })
 
 	-- damage nearby objects, player or not
 	for _, obj in ipairs(minetest.get_objects_inside_radius(pos, 5)) do
@@ -142,18 +134,14 @@ lightning.strike = function(pos)
 	local playerlist = minetest.get_connected_players()
 	for i = 1, #playerlist do
 		local player = playerlist[i]
-		local distance = vector.distance(player:get_pos(), pos)
+		local sky = {}
 
-		-- only affect players inside effect_range
-		if distance < lightning.effect_range then
-			local sky = {}
-			sky.bgcolor, sky.type, sky.textures = player:get_sky()
+		sky.bgcolor, sky.type, sky.textures = player:get_sky()
 
-			local name = player:get_player_name()
-			if ps[name] == nil then
-				ps[name] = sky
-				player:set_sky(0xffffff, "plain", {})
-			end
+		local name = player:get_player_name()
+		if ps[name] == nil then
+			ps[name] = {p = player, sky = sky}
+			player:set_sky({base_color = 0xffffff, type = "plain", textures = {}})
 		end
 	end
 
@@ -169,7 +157,7 @@ lightning.strike = function(pos)
 				return
 			end
 			-- very rarely, potentially cause a fire
-			if fire and random_fire and rng:next(1,1000) == 1 then
+			if fire and rng:next(1,10) == 1 then
 				minetest.set_node(pos2, {name = "fire:basic_flame"})
 			else
 				minetest.set_node(pos2, {name = "lightning:dying_flame"})
@@ -229,7 +217,7 @@ minetest.register_node("lightning:dying_flame", {
 })
 
 -- if other mods disable auto lightning during initialization, don't trigger the first lightning.
-minetest.after(5, function()
+minetest.after(5, function(dtime)
 	if lightning.auto then
 		minetest.after(rng:next(lightning.interval_low,
 			lightning.interval_high), lightning.strike)
